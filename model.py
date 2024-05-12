@@ -1,5 +1,6 @@
-from torch import nn
-
+import torch
+import torch.nn as nn
+import numpy as np
 
 class ResidualBlock(nn.Module):
     def __init__(self, num_channels, kernel_size=3, num_layers=2):
@@ -93,3 +94,119 @@ class Generator(nn.Module):
         y = self.sigmoid(y)
 
         return y
+
+class Discriminator(nn.Module):
+    def __init__(self, input_size, in_channels, hidden_channels=None, kernel_size=3):
+        super(Discriminator, self).__init__()
+        output_size = input_size
+
+        if hidden_channels is None:  hidden_channels = [64, 64, 128, 256, 512]  # an extra 64, as in the original model
+
+        self.conv1 = nn.Conv2d(in_channels, hidden_channels[0], kernel_size=kernel_size, stride=1, padding=1)
+        self.lrelu1 = nn.LeakyReLU(0.2)
+
+        layers = []
+        for i in range(1, len(hidden_channels)):
+            layers.append(nn.Conv2d(hidden_channels[i-1], hidden_channels[i], kernel_size=kernel_size, stride=2, padding=1))
+            layers.append(nn.BatchNorm2d(hidden_channels[i]))
+            layers.append(nn.LeakyReLU(0.2))
+
+        self.hidden_layers = nn.Sequential(*layers)
+
+        self.conv2 = nn.Conv2d(hidden_channels[-1], hidden_channels[-1], kernel_size=kernel_size, stride=1, padding=1)
+        self.batch_norm2 = nn.BatchNorm2d(hidden_channels[-1])
+        self.lrelu2 = nn.LeakyReLU(0.2)
+
+        self.conv3 = nn.Conv2d(hidden_channels[-1], hidden_channels[-1], kernel_size=1, stride=1, padding=0)
+        self.batch_norm3 = nn.BatchNorm2d(hidden_channels[-1])
+        self.lrelu3 = nn.LeakyReLU(0.2)
+
+        self.conv4 = nn.Conv2d(hidden_channels[-1], 1, kernel_size=1, stride=1, padding=0)
+
+        output_size = output_size // 4**(len(hidden_channels) - 1)  # (#hidden_channels - 1) layers. Power of 4 because we have 2d images (2*2) - output gets halved in each dimension
+        output_size = output_size * 1  # 1 is the #channels in last conv layer
+        # print('Output size:', output_size)
+
+        self.flatten = nn.Flatten()
+        self.dense1 = nn.Linear(output_size, 1024)
+        self.lrelu4 = nn.LeakyReLU(0.2)
+        self.dense2 = nn.Linear(1024, 1)
+
+    def forward(self, x):
+        y = self.conv1(x)
+        y = self.lrelu1(y)
+
+        y = self.hidden_layers(y)
+
+        y = self.lrelu2(self.batch_norm2(self.conv2(y)))
+        y = self.lrelu3(self.batch_norm3(self.conv3(y)))
+
+        y = self.conv4(y)
+
+        y = self.flatten(y)
+        y = self.dense1(y)
+        y = self.lrelu4(y)
+        y = self.dense2(y)
+
+        return y
+
+if __name__ == '__main__':
+    # Dummy input (1 image w/ 3 channels, 256x256)
+    np.random.seed(42)
+    image = np.random.rand(1, 3, 256, 256).astype(np.float32)
+    image = torch.from_numpy(image)
+
+    # Create the model
+    generator = Generator(in_channels=3)
+    discriminator = Discriminator(input_size=256*256, in_channels=3)
+
+    # Forward pass
+    output = generator(image)
+    print('Generator output shape:', output.shape)
+
+    output = discriminator(image)
+    print('Discriminator output shape:', output.shape)
+
+    # Loss function
+    criterion = nn.BCEWithLogitsLoss()
+
+    # Optimizers
+    generator_optimizer = torch.optim.Adam(generator.parameters(), lr=0.001, betas=(0.5, 0.999))
+    discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.001, betas=(0.5, 0.999))
+
+    # Training loop
+    generator.train()
+    discriminator.train()
+    gen_losses = []
+    disc_losses = []
+
+    for epoch in range(10):
+        discriminator_optimizer.zero_grad()
+        generator_optimizer.zero_grad()
+
+        fake_image = generator(image)
+        real_disc = discriminator(image)
+        fake_disc = discriminator(fake_image)
+
+        # Discriminator
+        real_loss = criterion(real_disc, torch.ones_like(real_disc))
+        fake_loss = criterion(fake_disc, torch.zeros_like(fake_disc))
+
+        disc_loss = real_loss + fake_loss
+        disc_loss.backward()
+
+        discriminator_optimizer.step()
+
+        # Generator
+        fake_image = generator(image)
+        fake_disc = discriminator(fake_image)
+        gen_loss = criterion(fake_disc, torch.ones_like(fake_disc))
+        gen_loss.backward()
+
+        generator_optimizer.step()
+
+        gen_losses.append(gen_loss.item())
+        disc_losses.append(disc_loss.item())
+
+        if epoch % 10 == 0:
+            print(f'Epoch [{epoch}/{10}], Gen Loss: {gen_loss.item():.4f}, Disc Loss: {disc_loss.item():.4f}')
