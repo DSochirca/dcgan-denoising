@@ -70,9 +70,9 @@ class Generator(nn.Module):
 
         self.conv3 = nn.Conv2d(residual_channels[-1], residual_channels[-1], kernel_size=kernel_size, stride=1, padding=1)
         self.relu3 = nn.ReLU()
-        self.conv4 = nn.Conv2d(residual_channels[-1], residual_channels[-1], kernel_size=1, stride=1, padding=1)  # last 2 conv use kernel_size=1
+        self.conv4 = nn.Conv2d(residual_channels[-1], residual_channels[-1], kernel_size=1, stride=1, padding=0)  # last 2 conv use kernel_size=1
         self.relu4 = nn.ReLU()
-        self.conv5 = nn.Conv2d(residual_channels[-1], in_channels, kernel_size=1, stride=1, padding=1)
+        self.conv5 = nn.Conv2d(residual_channels[-1], in_channels, kernel_size=1, stride=1, padding=0)  # padding=0 if kernel_size=1
 
         self.sigmoid = nn.Sigmoid()
 
@@ -94,6 +94,8 @@ class Generator(nn.Module):
         y = self.sigmoid(y)
 
         return y
+
+
 
 class Discriminator(nn.Module):
     def __init__(self, input_size, in_channels, hidden_channels=None, kernel_size=3):
