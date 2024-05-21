@@ -95,8 +95,6 @@ class Generator(nn.Module):
 
         return y
 
-
-
 class Discriminator(nn.Module):
     def __init__(self, input_size, in_channels, hidden_channels=None, kernel_size=3):
         super(Discriminator, self).__init__()
@@ -133,6 +131,7 @@ class Discriminator(nn.Module):
         self.dense1 = nn.Linear(output_size, 1024)
         self.lrelu4 = nn.LeakyReLU(0.2)
         self.dense2 = nn.Linear(1024, 1)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         y = self.conv1(x)
@@ -149,6 +148,7 @@ class Discriminator(nn.Module):
         y = self.dense1(y)
         y = self.lrelu4(y)
         y = self.dense2(y)
+        y = self.sigmoid(y)
 
         return y
 
